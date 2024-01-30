@@ -1,6 +1,9 @@
 package com.myproject.springboot3securityjwtio.auth;
 
 import com.myproject.springboot3securityjwtio.config.JwtService;
+import com.myproject.springboot3securityjwtio.token.Token;
+import com.myproject.springboot3securityjwtio.token.TokenRepository;
+import com.myproject.springboot3securityjwtio.token.TokenType;
 import com.myproject.springboot3securityjwtio.user.Role;
 import com.myproject.springboot3securityjwtio.user.User;
 import com.myproject.springboot3securityjwtio.user.UserRepository;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Service;
 public class AuthenticationService {
 
     private final UserRepository userRepository;
+    private final TokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -30,13 +34,16 @@ public class AuthenticationService {
                 .role(Role.USER)
                 .build();
 
-        userRepository.save(user);
+        var savedUser = userRepository.save(user);
 
         var jwtToken = jwtService.generateToken(user);
+
+        saveUserToken(savedUser, jwtToken);
 
         return AuthenticationResponse.builder()
                 .token(jwtToken)
                 .build();
+
     }
 
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
@@ -48,9 +55,34 @@ public class AuthenticationService {
 
         var jwtToken = jwtService.generateToken(user);
 
+        revokeALlUserTokens(user);
+
+        saveUserToken(user, jwtToken);
+
         return AuthenticationResponse.builder()
                 .token(jwtToken)
                 .build();
+    }
+
+    private void revokeALlUserTokens(User user) {
+        var validUserTokens = tokenRepository.findALlValidTokensByUser(user.getId());
+        if (validUserTokens.isEmpty())
+            return;
+        validUserTokens.forEach(t -> {
+            t.setExpired(true);
+            t.setRevoked(true);
+        });
+
+    }
+    private void saveUserToken(User user, String jwtToken) {
+        var token = Token.builder()
+                .user(user)
+                .token(jwtToken)
+                .tokenType(TokenType.BEARER)
+                .expired(false)
+                .revoked(false)
+                .build();
+        tokenRepository.save(token);
     }
 
 }
